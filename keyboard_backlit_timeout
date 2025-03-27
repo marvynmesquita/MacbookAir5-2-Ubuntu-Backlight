@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# filepath: /usr/local/bin/adjust_brightness.sh
+
+# Intervalo de verificação em segundos
+INTERVAL=5
+
+# Caminho para o sensor de luz ambiente
+LIGHT_SENSOR_PATH="/sys/devices/platform/applesmc.768/light"
+
+# Obtém o brilho atual da tela no início
+initial_screen_brightness=$(brightnessctl -d acpi_video0 get)
+
+# Define um brilho mínimo maior para evitar que a tela fique muito escura
+MIN_SCREEN_BRIGHTNESS=40  # Aumentado para 40%
+MIN_KEYBOARD_BRIGHTNESS=20  # Aumentado para 20%
+
+# Função para ajustar o brilho da tela e do teclado
+adjust_brightness() {
+    # Verifica se o sensor de luz ambiente está acessível
+    if [[ -f "$LIGHT_SENSOR_PATH" ]]; then
+        # Lê o valor do sensor de luz ambiente
+        ambient_light=$(cat "$LIGHT_SENSOR_PATH" | awk '{print $1}')
+
+        # Calcula o brilho da tela com base no brilho ambiente e no brilho inicial
+        if [[ $ambient_light -le 10 ]]; then
+            screen_brightness=$((initial_screen_brightness / 4))  # Reduz para 25% do brilho inicial
+            keyboard_brightness=0 # Desliga o teclado
+        elif [[ $ambient_light -le 50 ]]; then
+            screen_brightness=$((initial_screen_brightness / 2))  # Reduz para 50% do brilho inicial
+            keyboard_brightness=50
+        else
+            screen_brightness=$initial_screen_brightness # Mantém o brilho inicial
+            keyboard_brightness=100
+        fi
+
+        # Garante que o brilho da tela não fique abaixo do mínimo
+        if [[ $screen_brightness -lt $MIN_SCREEN_BRIGHTNESS ]]; then
+            screen_brightness=$MIN_SCREEN_BRIGHTNESS
+        fi
+
+        # Garante que o brilho do teclado não fique abaixo do mínimo
+        if [[ $keyboard_brightness -lt $MIN_KEYBOARD_BRIGHTNESS ]]; then
+            keyboard_brightness=$MIN_KEYBOARD_BRIGHTNESS
+        fi
+
+        # Define o brilho da tela
+        brightnessctl -d acpi_video0 set "$screen_brightness%"
+
+        # Define o brilho do teclado
+        brightnessctl -d smc::kbd_backlight set "$keyboard_brightness%"
+    else
+        echo "Sensor de luz ambiente não encontrado em $LIGHT_SENSOR_PATH"
+        exit 1
+    fi
+}
+
+# Loop infinito para verificar periodicamente o brilho
+while true; do
+    adjust_brightness
+    sleep "$INTERVAL"
+done
